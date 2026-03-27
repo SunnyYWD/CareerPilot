@@ -1,0 +1,10 @@
+# macOS / Finder
+.DS_Store
+._*
+
+# JetBrains
+.idea/
+
+# Logs
+*.log
+

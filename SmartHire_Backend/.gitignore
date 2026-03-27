@@ -1,0 +1,58 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+# Local configuration overrides
+src/main/resources/application-local.yml
+
+# macOS resource forks
+._*
+.DS_Store
+
+# docker 
+smarthire_deploy
+smarthire_deploy.pub
+
+# nginx
+nginx-smarthire.conf
+nginx安装步骤.md
+
+# 测试
+/API文档与测试/
+
+# RAG
+embedding-store.json
+.rag_fingerprint
+
+ServiceCycleArchitectureTest.java
