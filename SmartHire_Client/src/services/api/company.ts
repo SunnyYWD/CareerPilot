@@ -1,19 +1,86 @@
 import { http } from '../http';
 
 // Company management
-export interface UpdateCompanyInfoParams {
+export interface CompanyInfo {
   companyName: string;
   description: string;
   companyScale: number;
   financingStage: number;
   industry: string;
-  website: string;
-  logoUrl: string;
-  mainBusiness: string;
-  benefits: string;
-  status: number;
+  website?: string;
+  logoUrl?: string;
+  benefits?: string;
   companyCreatedAt: string;
-  registeredCapital: string;
+  registeredCapital: number;
+}
+
+export type CreateCompanyParams = CompanyInfo;
+
+export type UpdateCompanyInfoParams = CompanyInfo;
+
+export interface CompanyListItem {
+  companyId: number;
+  companyName: string;
+}
+
+export interface GetCompanyListParams {
+  current?: number;
+  size?: number;
+  keyword?: string;
+}
+
+/**
+ * Create company
+ * @returns Created company ID
+ */
+export function createCompany(params: CreateCompanyParams): Promise<number> {
+  const url = '/hr/company/company';
+  console.log('[Params]', url, params);
+  return http<number>({
+    url,
+    method: 'POST',
+    data: params,
+  }).then(response => {
+    console.log('[Response]', url, response);
+    return response;
+  });
+}
+
+/**
+ * Get company information by ID
+ * @returns Company information
+ */
+export function getCompanyById(companyId: number): Promise<CompanyInfo> {
+  const url = `/hr/company/company/${companyId}`;
+  console.log('[Params]', url, { companyId });
+  return http<CompanyInfo>({
+    url,
+    method: 'GET',
+  }).then(response => {
+    console.log('[Response]', url, response);
+    return response;
+  });
+}
+
+/**
+ * Get company list
+ * @returns Company list
+ */
+export function getCompanies(params?: GetCompanyListParams): Promise<CompanyListItem[]> {
+  const queryParams: string[] = [];
+  if (params?.current !== undefined) queryParams.push(`current=${params.current}`);
+  if (params?.size !== undefined) queryParams.push(`size=${params.size}`);
+  if (params?.keyword) queryParams.push(`keyword=${encodeURIComponent(params.keyword)}`);
+  const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
+  const url = `/hr/company/companies${queryString}`;
+  console.log('[Params]', url, params);
+  return http<CompanyListItem[]>({
+    url,
+    method: 'GET',
+  }).then(response => {
+    console.log('[Response]', url, response);
+    return response;
+  });
 }
 
 /**
@@ -25,7 +92,7 @@ export function updateCompanyInfo(companyId: number, params: UpdateCompanyInfoPa
   console.log('[Params]', url, { companyId, ...params });
   return http<null>({
     url,
-    method: 'PUT',
+    method: 'POST',
     data: params,
   }).then(response => {
     console.log('[Response]', url, response);

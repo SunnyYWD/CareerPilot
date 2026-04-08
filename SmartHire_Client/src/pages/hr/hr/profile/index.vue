@@ -34,6 +34,17 @@
       <button class="primary" :disabled="saving" @click="handleSave">保存</button>
     </view>
 
+    <view class="card">
+      <view class="company-row">
+        <view>
+          <view class="section-title">企业资料</view>
+          <view class="company-name">{{ hrInfo?.companyName || '暂未关联企业' }}</view>
+          <view class="company-desc">查看并编辑企业名称、行业、规模、介绍等基础资料。</view>
+        </view>
+        <view class="company-action" @click="goCompanyProfile">查看</view>
+      </view>
+    </view>
+
     <view class="card logout-card">
       <button class="logout" @click="logout">退出登录</button>
     </view>
@@ -46,8 +57,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
 import { getHrInfo, updateHrInfo, type HrInfoUpdatePayload, type HrInfo } from '@/services/api/hr';
 import { useHrStore } from '@/store/hr';
+import { useUserStore } from '@/store/user';
 import avatarImg from '@/static/user-avatar.png';
 
 const hrInfo = ref<HrInfo | null>(null);
@@ -59,6 +72,7 @@ const form = ref<HrInfoUpdatePayload>({
 const loading = ref(false);
 const saving = ref(false);
 const hrStore = useHrStore();
+const userStore = useUserStore();
 
 const loadProfile = async () => {
   loading.value = true;
@@ -94,19 +108,27 @@ const handleSave = async () => {
   }
 };
 
+const goCompanyProfile = () => {
+  uni.navigateTo({ url: '/pages/hr/hr/company/index' });
+};
+
 const logout = () => {
   uni.showModal({
     title: '提示',
     content: '确认退出当前账号吗？',
     success: (res) => {
       if (res.confirm) {
-        uni.reLaunch({ url: '/pages/auth/login' });
+        userStore.logout();
       }
     },
   });
 };
 
 onMounted(() => {
+  loadProfile();
+});
+
+onShow(() => {
   loadProfile();
 });
 </script>
@@ -176,6 +198,35 @@ onMounted(() => {
   font-size: 30rpx;
   font-weight: 600;
   margin-bottom: 16rpx;
+}
+
+.company-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.company-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.company-desc {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #6f788f;
+}
+
+.company-action {
+  flex-shrink: 0;
+  padding: 12rpx 24rpx;
+  border-radius: 999rpx;
+  background: #eef4ff;
+  color: #2f7cff;
+  font-size: 24rpx;
 }
 
 .form-item {

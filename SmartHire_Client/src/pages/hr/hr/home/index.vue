@@ -7,7 +7,19 @@
           <image :src="avatarImg" mode="aspectFill" />
         </view>
       </view>
-      <view class="hero-sub">欢迎回来，查看今天的待办</view>
+      <view class="hero-sub">{{ welcomeName ? `欢迎回来，${welcomeName}` : '欢迎回来，查看今天的待办' }}</view>
+      <view class="hero-tip">{{ companyName ? `${companyName} 的招聘进展已同步更新` : '查看今天的待办与候选人动态' }}</view>
+    </view>
+
+    <view class="card company-card">
+      <view class="company-header">
+        <view>
+          <view class="section-title">企业资料</view>
+          <view class="company-name">{{ companyName || '暂未关联企业' }}</view>
+          <view class="company-desc">完善企业资料后，候选人能更快了解团队背景与岗位可信度。</view>
+        </view>
+        <view class="action-link" @click="goCompanyProfile">查看</view>
+      </view>
     </view>
 
     <view class="card todo-card">
@@ -68,21 +80,37 @@ import { onShow } from '@dcloudio/uni-app';
 import { fetchDashboardData, type DashboardTodoItem, type RecruitStatistic } from '@/mock/hr';
 import avatarImg from '@/static/user-avatar.png';
 import CustomTabBar from '@/components/common/CustomTabBar.vue';
-import { getPublicSeekerCards, type PublicSeekerCard } from '@/services/api/hr';
+import { getPublicSeekerCards, getHrInfo, type PublicSeekerCard } from '@/services/api/hr';
+import { useHrStore } from '@/store/hr';
 import SeekerRecommendCard from '@/pages/hr/hr/seeker/components/SeekerRecommendCard.vue';
 
 const todos = ref<DashboardTodoItem[]>([]);
 const stats = ref<RecruitStatistic[]>([]);
+const welcomeName = ref('');
+const companyName = ref('');
 
 const seekerCards = ref<PublicSeekerCard[]>([]);
 const seekerLoading = ref(false);
 const seekerError = ref('');
+const hrStore = useHrStore();
 
 const loadDashboard = async () => {
   // TODO: 替换为真实接口 GET /api/hr/dashboard
   const data = await fetchDashboardData();
   todos.value = data.todos;
   stats.value = data.stats;
+};
+
+const loadHrSummary = async () => {
+  try {
+    const info = await getHrInfo();
+    welcomeName.value = info.realName || '';
+    companyName.value = info.companyName || '';
+    hrStore.setCompanyId(info.companyId);
+    hrStore.setCompanyName(info.companyName || '');
+  } catch (err) {
+    console.error('Failed to load HR summary:', err);
+  }
 };
 
 const refreshSeekerCards = async () => {
@@ -101,6 +129,10 @@ const refreshSeekerCards = async () => {
 
 const goProfile = () => {
   uni.navigateTo({ url: '/pages/hr/hr/profile/index' });
+};
+
+const goCompanyProfile = () => {
+  uni.navigateTo({ url: '/pages/hr/hr/company/index' });
 };
 
 const parseQuery = (queryString?: string) => {
@@ -157,12 +189,14 @@ const trendText = (trend: RecruitStatistic['trend']) => {
 };
 
 onMounted(() => {
+  loadHrSummary();
   loadDashboard();
   refreshSeekerCards();
 });
 
 onShow(() => {
   uni.hideTabBar({ fail: () => {} });
+  loadHrSummary();
   refreshSeekerCards();
 });
 </script>
@@ -216,12 +250,38 @@ onShow(() => {
   color: #2f4b76;
 }
 
+.hero-tip {
+  font-size: 24rpx;
+  color: #58749b;
+}
+
 .card {
   background: #ffffff;
   border-radius: 24rpx;
   padding: 32rpx;
   margin-bottom: 28rpx;
   box-shadow: 0 12rpx 32rpx rgba(31, 55, 118, 0.08);
+}
+
+.company-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.company-name {
+  margin-top: 8rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #0b1c33;
+}
+
+.company-desc {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #6b7a90;
 }
 
 .section-title {

@@ -283,6 +283,14 @@
       }
     },
     {
+      "path": "pages/hr/hr/company/index",
+      "style": {
+        "navigationBarTitleText": "企业资料",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#ffffff"
+      }
+    },
+    {
       "path": "pages/hr/hr/analytics/index",
       "style": {
         "navigationBarTitleText": "数据分析",
