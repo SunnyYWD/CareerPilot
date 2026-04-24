@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.SmartHire.messageService.mapper.ConversationMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.SmartHire.messageService.model.Conversation">
+        <id column="id" property="id" />
+        <result column="user1_id" property="user1Id" />
+        <result column="user2_id" property="user2Id" />
+        <result column="last_message" property="lastMessage" />
+        <result column="last_message_time" property="lastMessageTime" />
+        <result column="unread_count_user1" property="unreadCountUser1" />
+        <result column="unread_count_user2" property="unreadCountUser2" />
+        <result column="pinned_by_user1" property="pinnedByUser1" />
+        <result column="pinned_by_user2" property="pinnedByUser2" />
+        <result column="has_notification_user1" property="hasNotificationUser1" />
+        <result column="has_notification_user2" property="hasNotificationUser2" />
+        <result column="created_at" property="createdAt" />
+        <result column="deleted_by_user1" property="deletedByUser1" />
+        <result column="deleted_by_user2" property="deletedByUser2" />
+    </resultMap>
+
+    <!-- 通用查询结果列 -->
+    <sql id="Base_Column_List">
+        id, user1_id, user2_id, last_message, last_message_time, unread_count_user1, unread_count_user2, pinned_by_user1, pinned_by_user2, has_notification_user1, has_notification_user2, created_at, deleted_by_user1, deleted_by_user2
+    </sql>
+
+    <!-- 获取对方用户名 -->
+    <select id="getOtherUserName" resultType="java.lang.String">
+        SELECT u.username
+        FROM user u
+        JOIN conversation c ON (u.id = c.user1_id OR u.id = c.user2_id)
+        WHERE c.id = #{conversationId}
+        AND u.id &lt;&gt; #{currentUserId}
+        LIMIT 1
+    </select>
+
+    <!-- 获取对方用户头像 -->
+    <select id="getOtherUserAvatar" resultType="java.lang.String">
+        SELECT u.avatar_url
+        FROM user u
+        JOIN conversation c ON (u.id = c.user1_id OR u.id = c.user2_id)
+        WHERE c.id = #{conversationId}
+        AND u.id &lt;&gt; #{currentUserId}
+        LIMIT 1
+    </select>
+
+    <!-- 获取对方公司ID -->
+    <select id="getOtherCompanyId" resultType="java.lang.Long">
+        SELECT h.company_id
+        FROM hr_info h
+        JOIN conversation c ON (h.user_id = c.user1_id OR h.user_id = c.user2_id)
+        WHERE c.id = #{conversationId}
+        AND h.user_id &lt;&gt; #{currentUserId}
+        LIMIT 1
+    </select>
+
+    <!-- 获取对方公司名称 -->
+    <select id="getOtherCompanyName" resultType="java.lang.String">
+        SELECT co.company_name
+        FROM company co
+        JOIN hr_info h ON co.id = h.company_id
+        JOIN conversation c ON (h.user_id = c.user1_id OR h.user_id = c.user2_id)
+        WHERE c.id = #{conversationId}
+        AND h.user_id &lt;&gt; #{currentUserId}
+        LIMIT 1
+    </select>
+
+    <!-- 获取对方公司Logo -->
+    <select id="getOtherCompanyLogo" resultType="java.lang.String">
+        SELECT co.logo_url
+        FROM company co
+        JOIN hr_info h ON co.id = h.company_id
+        JOIN conversation c ON (h.user_id = c.user1_id OR h.user_id = c.user2_id)
+        WHERE c.id = #{conversationId}
+        AND h.user_id &lt;&gt; #{currentUserId}
+        LIMIT 1
+    </select>
+
+    <!-- 获取投递记录ID -->
+    <select id="getApplicationIdByConversationId" resultType="java.lang.Long">
+        SELECT a.id
+        FROM application a
+        WHERE a.conversation_id = #{conversationId}
+        LIMIT 1
+    </select>
+
+</mapper>

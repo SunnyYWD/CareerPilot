@@ -1,0 +1,76 @@
+package com.SmartHire.recruitmentService.controller;
+
+import com.SmartHire.common.entity.Result;
+import com.SmartHire.recruitmentService.service.InterviewService;
+import com.SmartHire.recruitmentService.service.OfferService;
+import com.SmartHire.recruitmentService.service.SeekerApplicationService;
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.constraints.NotNull;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * 招聘服务公共招聘控制器
+ *
+ * @author SmartHire Team
+ * @since 2025-11-30
+ */
+@RestController
+@RequestMapping("/recruitment/public")
+@Validated
+public class PublicRecruitmentController {
+    @Autowired
+    private SeekerApplicationService seekerApplicationService;
+
+    @Autowired
+    private InterviewService interviewService;
+
+    @Autowired
+    private OfferService offerService;
+
+    @GetMapping("/application/exists")
+    @Operation(summary = "检查是否存在投递/推荐记录", description = "检查是否存在投递/推荐记录")
+    public Result<Boolean> checkApplicationExists(
+            @RequestParam @NotNull(message = "求职者ID不能为空") Long seekerId,
+            @RequestParam @NotNull(message = "岗位ID不能为空") Long jobId) {
+
+        boolean exists = seekerApplicationService.existsBySeekerIdAndJobId(seekerId, jobId);
+        return Result.success("查询成功", exists);
+    }
+
+    @GetMapping("/interview/status")
+    @Operation(summary = "获取面试状态", description = "根据面试ID获取当前面试状态（0-待确认 1-已确认 2-已完成 3-已取消）")
+    public Result<Integer> getInterviewStatus(
+            @RequestParam @NotNull(message = "面试ID不能为空") Long interviewId) {
+        Integer status = interviewService.getInterviewStatus(interviewId);
+        return Result.success("查询成功", status);
+    }
+
+    @GetMapping("/offer/status")
+    @Operation(summary = "获取 Offer 状态", description = "根据 Offer ID 获取当前 Offer 状态（0-待接受 1-已接受 2-已拒绝）")
+    public Result<Integer> getOfferStatus(
+            @RequestParam @NotNull(message = "Offer ID 不能为空") Long offerId) {
+        Integer status = offerService.getOfferStatus(offerId);
+        return Result.success("查询成功", status);
+    }
+
+    @GetMapping("/interview/id-by-message")
+    @Operation(summary = "根据消息ID获取面试ID", description = "根据消息ID获取面试ID")
+    public Result<Long> getInterviewIdByMessageId(
+            @RequestParam @NotNull(message = "消息ID不能为空") Long messageId) {
+        Long interviewId = interviewService.getInterviewIdByMessageId(messageId);
+        return Result.success("查询成功", interviewId);
+    }
+
+    @GetMapping("/offer/id-by-message")
+    @Operation(summary = "根据消息ID获取 Offer ID", description = "根据消息ID获取 Offer ID")
+    public Result<Long> getOfferIdByMessageId(
+            @RequestParam @NotNull(message = "消息ID不能为空") Long messageId) {
+        Long offerId = offerService.getOfferIdByMessageId(messageId);
+        return Result.success("查询成功", offerId);
+    }
+}
