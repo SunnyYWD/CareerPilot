@@ -1344,14 +1344,3 @@ POST /smarthire/api/ai/career-planning/{jobId}
 
 ---
 
-## 日志说明
-
-服务运行时会输出以下日志：
-
-- 启动时：MySQL 和 Milvus Lite 连接状态
-- 请求时：FastAPI 自动记录 HTTP 请求
-- 错误时：认证失败、数据库查询错误等详细信息
-
-日志格式：`%(asctime)s - %(name)s - %(levelname)s - %(message)s`
-
-日志级别：INFO
