@@ -36,7 +36,7 @@ export interface GetChatHistoryParams {
 
 export interface SendMessageParams {
   receiverId: number;
-  applicationId: number;
+  applicationId?: number | null;
   messageType: number;
   content: string;
   fileUrl: null;
@@ -67,19 +67,19 @@ export function getChatHistory(params: GetChatHistoryParams): Promise<Message[]>
   const queryParams: Record<string, any> = {
     conversationId: params.conversationId,
   };
-  
+
   if (params.page !== undefined) {
     queryParams.page = params.page;
   }
-  
+
   if (params.size !== undefined) {
     queryParams.size = params.size;
   }
-  
+
   const queryString = Object.keys(queryParams)
     .map(key => `${key}=${encodeURIComponent(queryParams[key])}`)
     .join('&');
-  
+
   const url = `/api/message/get-chat-history?${queryString}`;
   console.log('[Params]', url, params);
   return http<Message[]>({
@@ -97,14 +97,17 @@ export function getChatHistory(params: GetChatHistoryParams): Promise<Message[]>
  */
 export function sendMessage(params: SendMessageParams): Promise<Message> {
   const url = '/api/message/send-text';
-  const requestData = {
+  const requestData: Record<string, any> = {
     receiverId: params.receiverId,
-    applicationId: params.applicationId,
     messageType: params.messageType,
     content: params.content,
     fileUrl: params.fileUrl,
     replyTo: params.replyTo,
   };
+  const applicationId = typeof params.applicationId === 'number' ? params.applicationId : null;
+  if (applicationId && applicationId > 0) {
+    requestData.applicationId = applicationId;
+  }
   console.log('[Params]', url, requestData);
   return http<Message>({
     url,
@@ -183,13 +186,14 @@ export function getUnreadCount(): Promise<number> {
 
 export interface SendMediaParams {
   receiverId: number;
-  applicationId: number;
+  applicationId?: number | null;
   messageType: number;
   filePath: string;
+  content?: string;
 }
 
 /**
- * Send media message (image)
+ * Send media message (image, file)
  * @returns Sent message data
  */
 export function sendMedia(params: SendMediaParams): Promise<Message> {
@@ -197,37 +201,59 @@ export function sendMedia(params: SendMediaParams): Promise<Message> {
   const baseUrl = getApiBaseUrl(apiPath);
   let normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
   let normalizedPath = '/api/message/send-media';
-  
+
   if (normalizedBaseUrl.endsWith('/api') && normalizedPath.startsWith('/api')) {
     normalizedPath = normalizedPath.replace(/^\/api/, '');
   }
-  
+
   const fullUrl = `${normalizedBaseUrl}${normalizedPath}`;
   const token = uni.getStorageSync('auth_token');
 
-  console.log('[Params]', fullUrl, params);
-
   return new Promise((resolve, reject) => {
-    const payload = JSON.stringify({
+    const dto: Record<string, any> = {
       receiverId: params.receiverId,
-      applicationId: params.applicationId,
       messageType: params.messageType,
-    });
+    };
+    // 添加 content（如果提供）
+    if (params.content !== undefined) {
+      dto.content = params.content;
+    } else if (params.messageType === 2) {
+      dto.content = '[图片]';
+    }
+    // 添加 applicationId（如果提供且大于 0）
+    if (params.applicationId !== undefined && params.applicationId !== null) {
+      const appId = typeof params.applicationId === 'number' ? params.applicationId : Number(params.applicationId);
+      if (appId > 0) {
+        dto.applicationId = appId;
+      }
+    }
 
+    const dtoString = JSON.stringify(dto);
+    console.log('[Params]', fullUrl, { params, dto, dtoString });
     // #ifdef H5
     if (params.filePath.startsWith('data:') || params.filePath.startsWith('blob:')) {
       fetch(params.filePath)
         .then(res => res.blob())
         .then(blob => {
           const formData = new FormData();
-          const fileName = params.filePath.includes('image') ? 'image.png' : 'file';
+
+          let fileName = 'file';
+          if (params.messageType === 2) {
+            fileName = 'image.png';
+          } else if (params.filePath.includes('pdf')) {
+            fileName = 'document.pdf';
+          }
+
           formData.append('file', blob, fileName);
-          formData.append('payload', payload);
-          
+          formData.append('payload', dtoString);
+          formData.append('dto', dtoString);
+          // 对于 H5 环境的 FormData 请求，不在 URL 中添加查询参数，只在 FormData 中发送
+
           const xhr = new XMLHttpRequest();
           xhr.open('POST', fullUrl, true);
           xhr.setRequestHeader('Authorization', token ? `Bearer ${token}` : '');
-          
+          // 不要设置 Content-Type，让浏览器自动设置（包含 boundary）
+
           xhr.onload = () => {
             try {
               let data: any;
@@ -236,7 +262,7 @@ export function sendMedia(params: SendMediaParams): Promise<Message> {
               } else {
                 data = xhr.responseText;
               }
-              
+
               if (xhr.status >= 200 && xhr.status < 300) {
                 if (data && data.code === 0) {
                   console.log('[Response]', fullUrl, data.data);
@@ -245,32 +271,41 @@ export function sendMedia(params: SendMediaParams): Promise<Message> {
                   console.log('[Response]', fullUrl, data);
                   resolve(data);
                 } else {
-                  reject(new Error(data?.message || 'Send failed'));
+                  const errorMsg = data?.message || data?.detail || 'Send failed';
+                  reject(new Error(errorMsg));
                 }
               } else {
-                reject(new Error(`Request failed with status ${xhr.status}`));
+                const errorMsg = data?.message || data?.detail || `Request failed with status ${xhr.status}`;
+                reject(new Error(errorMsg));
               }
             } catch (error) {
               reject(new Error('Failed to parse response: ' + (error instanceof Error ? error.message : String(error))));
             }
           };
-          
+
           xhr.onerror = () => {
             reject(new Error('Network error'));
           };
-          
+
           xhr.send(formData);
         })
         .catch(error => {
           reject(new Error('Failed to read file: ' + (error instanceof Error ? error.message : String(error))));
         });
     } else {
+      // 对于非 H5 环境，使用 uni.uploadFile，URL 中可以包含查询参数
+      const dtoEncoded = encodeURIComponent(dtoString);
+      const uploadUrlWithQuery = fullUrl.includes('?')
+        ? `${fullUrl}&dto=${dtoEncoded}&payload=${dtoEncoded}`
+        : `${fullUrl}?dto=${dtoEncoded}&payload=${dtoEncoded}`;
+
       uni.uploadFile({
-        url: fullUrl,
+        url: uploadUrlWithQuery,
         filePath: params.filePath,
         name: 'file',
         formData: {
-          payload: payload,
+          payload: dtoString,
+          dto: dtoString,
         },
         header: {
           'Authorization': token ? `Bearer ${token}` : '',
@@ -283,7 +318,7 @@ export function sendMedia(params: SendMediaParams): Promise<Message> {
             } else {
               data = res.data;
             }
-            
+
             if (res.statusCode >= 200 && res.statusCode < 300) {
               if (data && data.code === 0) {
                 console.log('[Response]', fullUrl, data.data);
@@ -302,19 +337,32 @@ export function sendMedia(params: SendMediaParams): Promise<Message> {
           }
         },
         fail: (error) => {
-          reject(new Error(error.errMsg || 'Upload failed'));
+          const errMsg = error.errMsg || 'Upload failed';
+          // 如果错误信息包含"参数格式错误"，提供更详细的错误信息
+          if (errMsg.includes('参数格式错误') || errMsg.includes('参数')) {
+            reject(new Error(`参数格式错误: ${JSON.stringify(dto)}`));
+          } else {
+            reject(new Error(errMsg));
+          }
         },
       });
     }
     // #endif
-    
+
     // #ifndef H5
+    // 对于非 H5 环境（小程序等），使用 uni.uploadFile，URL 中可以包含查询参数
+    const dtoEncoded = encodeURIComponent(dtoString);
+    const uploadUrlWithQuery = fullUrl.includes('?')
+      ? `${fullUrl}&dto=${dtoEncoded}&payload=${dtoEncoded}`
+      : `${fullUrl}?dto=${dtoEncoded}&payload=${dtoEncoded}`;
+
     uni.uploadFile({
-      url: fullUrl,
+      url: uploadUrlWithQuery,
       filePath: params.filePath,
       name: 'file',
       formData: {
-        payload: payload,
+        payload: dtoString,
+        dto: dtoString,
       },
       header: {
         'Authorization': token ? `Bearer ${token}` : '',
@@ -327,7 +375,7 @@ export function sendMedia(params: SendMediaParams): Promise<Message> {
           } else {
             data = res.data;
           }
-          
+
           if (res.statusCode >= 200 && res.statusCode < 300) {
             if (data && data.code === 0) {
               console.log('[Response]', fullUrl, data.data);
@@ -336,17 +384,24 @@ export function sendMedia(params: SendMediaParams): Promise<Message> {
               console.log('[Response]', fullUrl, data);
               resolve(data);
             } else {
-              reject(new Error(data?.message || 'Send failed'));
+              reject(new Error(data?.message || data?.detail || 'Send failed'));
             }
           } else {
-            reject(new Error(`Request failed with status ${res.statusCode}`));
+            const errorMsg = data?.message || data?.detail || `Request failed with status ${res.statusCode}`;
+            reject(new Error(errorMsg));
           }
         } catch (error) {
           reject(new Error('Failed to parse response: ' + (error instanceof Error ? error.message : String(error))));
         }
       },
       fail: (error) => {
-        reject(new Error(error.errMsg || 'Upload failed'));
+        const errMsg = error.errMsg || 'Upload failed';
+        // 如果错误信息包含"参数格式错误"，提供更详细的错误信息
+        if (errMsg.includes('参数格式错误') || errMsg.includes('参数')) {
+          reject(new Error(`参数格式错误: ${JSON.stringify(dto)}`));
+        } else {
+          reject(new Error(errMsg));
+        }
       },
     });
     // #endif
