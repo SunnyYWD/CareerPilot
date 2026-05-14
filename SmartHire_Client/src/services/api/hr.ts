@@ -9,6 +9,7 @@ export interface HrInfo {
   realName: string;
   position: string;
   workPhone: string;
+  isCompanyAdmin?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -23,6 +24,8 @@ export interface RegisterHrParams {
   realName: string;
   position: string;
   workPhone: string;
+  companyId?: number;
+  isCompanyAdmin?: number;
 }
 
 interface PageResult<T> {
@@ -160,10 +163,10 @@ export function updateJobPosition(jobId: number, payload: JobPositionUpdatePaylo
  * @returns List of job positions
  */
 export function getJobPositionList(status?: number): Promise<JobPosition[]> {
+  const query = typeof status === 'number' ? `?status=${encodeURIComponent(status)}` : '';
   return http<JobPosition[]>({
-    url: "/api/hr/job-position",
-    method: "GET",
-    data: typeof status === "number" ? { status } : undefined,
+    url: `/api/hr/job-position${query}`,
+    method: 'GET',
   });
 }
 
@@ -230,6 +233,7 @@ export function getSeekerCard(userId: number): Promise<SeekerCard> {
 // ============ HR 推荐求职者/推荐岗位 ============
 export type PublicSeekerCard = SeekerCard & {
   id?: number;
+  realName?: string;
 };
 
 /**
@@ -253,13 +257,128 @@ export interface RecommendJobPayload {
   note?: string;
 }
 
+export interface ApplicationExistsPayload {
+  jobId: number;
+  seekerUserId: number;
+}
+
+export interface ApplicationExistsResult {
+  exists: boolean;
+  applicationId?: number;
+}
+
+/**
+ * Check whether an application/recommend record already exists for this job & seeker.
+ * Backend route: GET /recruitment/public/application/exists
+ */
+export function checkApplicationExists(payload: ApplicationExistsPayload): Promise<ApplicationExistsResult> {
+  const jobId = encodeURIComponent(String(payload.jobId));
+  const seekerUserId = encodeURIComponent(String(payload.seekerUserId));
+  return http<unknown>({
+    // Backend implementations vary: some expect seekerUserId, some expect seekerId; include both as query params.
+    url: `/api/recruitment/public/application/exists?jobId=${jobId}&seekerUserId=${seekerUserId}&seekerId=${seekerUserId}`,
+    method: "GET",
+  }).then((resp) => {
+    if (typeof resp === "boolean") return { exists: resp };
+    if (typeof resp === "number") return { exists: resp > 0, applicationId: resp > 0 ? resp : undefined };
+    if (typeof resp === "string") {
+      const lowered = resp.trim().toLowerCase();
+      if (lowered === "true" || lowered === "false") return { exists: lowered === "true" };
+      const parsed = Number(resp);
+      if (Number.isFinite(parsed)) return { exists: parsed > 0, applicationId: parsed > 0 ? parsed : undefined };
+    }
+
+    const maybeExists = (resp as any)?.exists ?? (resp as any)?.data ?? (resp as any)?.result;
+    if (typeof maybeExists === "boolean") {
+      const applicationIdRaw = (resp as any)?.applicationId ?? (resp as any)?.id;
+      const parsed = Number(applicationIdRaw);
+      return {
+        exists: maybeExists,
+        applicationId: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+      };
+    }
+
+    const parsed = Number((resp as any)?.applicationId ?? (resp as any)?.id);
+    if (Number.isFinite(parsed) && parsed > 0) return { exists: true, applicationId: parsed };
+
+    return { exists: false };
+  });
+}
+
 /**
  * Recommend a job to a seeker (HR action)
  */
 export function recommendJob(payload: RecommendJobPayload): Promise<number> {
-  return http<number>({
+  return http<unknown>({
     url: "/api/recruitment/hr/recommend",
     method: "POST",
+    data: payload,
+  }).then((resp) => {
+    if (typeof resp === "number") return resp;
+    if (typeof resp === "string") {
+      const parsed = Number(resp);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+
+    const maybeId = (resp as any)?.applicationId ?? (resp as any)?.id ?? (resp as any)?.data;
+    const parsed = Number(maybeId);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+
+    throw new Error("Invalid recommend response");
+  });
+}
+
+// ============ 招聘流程：面试 / Offer / 拒绝 ============
+export interface InterviewScheduleRequest {
+  applicationId: number;
+  interviewTime: string;
+  duration?: number;
+  interviewType?: number; // 1-电话 2-视频 3-现场
+  interviewRound?: number;
+  location?: string;
+  meetingLink?: string;
+  interviewer?: string;
+  notifyCandidate?: boolean;
+  note?: string;
+}
+
+export function scheduleInterview(payload: InterviewScheduleRequest): Promise<null> {
+  return http<null>({
+    url: "/api/recruitment/hr/interviews",
+    method: "POST",
+    data: payload,
+  });
+}
+
+export interface OfferRequest {
+  applicationId: number;
+  title?: string;
+  baseSalary?: number;
+  bonus?: number;
+  startDate?: string;
+  employmentType?: string; // full_time/part_time/intern
+  send?: boolean;
+  note?: string;
+}
+
+export function sendOffer(payload: OfferRequest): Promise<null> {
+  return http<null>({
+    url: "/api/recruitment/hr/offers",
+    method: "POST",
+    data: payload,
+  });
+}
+
+export interface RejectRequest {
+  reason?: string;
+  sendNotification?: boolean;
+  templateId?: string;
+}
+
+export function rejectCandidate(applicationId: number, payload: RejectRequest): Promise<null> {
+  return http<null>({
+    url: `/api/recruitment/hr/application/${applicationId}/reject`,
+    method: "PATCH",
     data: payload,
   });
 }
@@ -324,7 +443,7 @@ export function getPriorityList(): Promise<PriorityListResponse> {
   });
 }
 
-// ============ Applications ============ 
+// ============ Applications ============
 export interface ApplicationItem {
   id: number;
   jobId: number;
@@ -352,11 +471,24 @@ export interface ApplicationQueryParams {
  * @returns List of applications
  */
 export function getApplications(params?: ApplicationQueryParams): Promise<ApplicationItem[]> {
+  const primaryUrl = '/api/hr/application';
   return http<PageResult<ApplicationItem>>({
-    url: "/api/hr/application",
-    method: "GET",
+    url: primaryUrl,
+    method: 'GET',
     data: params,
-  }).then((page) => page?.records ?? []);
+  })
+    .then((page) => page?.records ?? [])
+    .catch(async (err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes('接口不存在') && !message.includes('Not Found')) {
+        throw err;
+      }
+      return http<PageResult<ApplicationItem>>({
+        url: '/api/recruitment/hr/application',
+        method: 'GET',
+        data: params,
+      }).then((page) => page?.records ?? []);
+    });
 }
 
 /**
@@ -364,9 +496,20 @@ export function getApplications(params?: ApplicationQueryParams): Promise<Applic
  * @returns Application detail data
  */
 export function getApplicationDetail(applicationId: number): Promise<ApplicationItem> {
+  const primaryUrl = `/api/hr/application/${applicationId}`;
   return http<ApplicationItem>({
-    url: `/api/hr/application/${applicationId}`,
-    method: "GET",
+    url: primaryUrl,
+    method: 'GET',
+  }).catch(async (err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message.includes('接口不存在') && !message.includes('Not Found')) {
+      throw err;
+    }
+    // Older deployments expose application detail under recruitment service.
+    return http<ApplicationItem>({
+      url: `/api/recruitment/hr/${applicationId}`,
+      method: 'GET',
+    });
   });
 }
 
