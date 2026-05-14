@@ -1,6 +1,7 @@
 {
   "_comment": "API endpoint to backend environment mapping configuration. Maps each API path to either 'dev' (uses .env.development) or 'prod' (uses .env.production)",
   "apiMappings": {
+    "/api/ai/hr/*": "prod",
     "/api/user-auth/send-verification-code": "prod",
     "/api/user-auth/verify-code": "prod",
     "/api/user-auth/register": "prod",
@@ -57,6 +58,10 @@
     "/api/recruitment/seeker/submit-resume": "prod",
     "/api/recruitment/hr/seeker-card": "prod",
     "/api/recruitment/hr/recommend": "prod",
+    "/api/recruitment/hr/interviews": "prod",
+    "/api/recruitment/hr/offers": "prod",
+    "/api/recruitment/hr/applications/*/reject": "prod",
+    "/api/recruitment/public/application/exists": "prod",
     "/api/recruitment/hr/application/*/comment": "prod",
     "/api/hr/application": "prod",
     "/api/hr/application/*": "prod",
