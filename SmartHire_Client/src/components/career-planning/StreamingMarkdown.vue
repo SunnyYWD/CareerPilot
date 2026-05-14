@@ -5,7 +5,7 @@
     <text v-if="isStreaming" class="streaming-cursor">|</text>
   </view>
   <!-- #endif -->
-  
+
   <!-- #ifndef H5 -->
   <view class="streaming-markdown-content">
     <rich-text :nodes="htmlContent" class="markdown-html"></rich-text>
@@ -28,33 +28,33 @@ const props = withDefaults(defineProps<Props>(), {
 
 function markdownToHtml(markdown: string): string {
   if (!markdown) return '';
-  
+
   let html = markdown;
-  
+
   html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
   html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
   html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
   html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-  
+
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  
+
   html = html.replace(/```[\s\S]*?```/g, (match) => {
     const code = match.replace(/```/g, '').trim();
     return `<pre><code>${escapeHtml(code)}</code></pre>`;
   });
-  
+
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  
+
   const lines = html.split('\n');
   const processedLines: string[] = [];
   let inList = false;
   let inOrderedList = false;
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmedLine = line.trim();
-    
+
     if (!trimmedLine) {
       if (inList) {
         processedLines.push('</ul>');
@@ -66,7 +66,7 @@ function markdownToHtml(markdown: string): string {
       }
       continue;
     }
-    
+
     const orderedMatch = trimmedLine.match(/^(\d+)\.\s+(.*)$/);
     if (orderedMatch) {
       if (!inOrderedList) {
@@ -80,7 +80,7 @@ function markdownToHtml(markdown: string): string {
       processedLines.push(`<li>${orderedMatch[2]}</li>`);
       continue;
     }
-    
+
     const listMatch = trimmedLine.match(/^[\-\*\+]\s+(.*)$/);
     if (listMatch) {
       if (!inList) {
@@ -94,7 +94,7 @@ function markdownToHtml(markdown: string): string {
       processedLines.push(`<li>${listMatch[1]}</li>`);
       continue;
     }
-    
+
     if (trimmedLine.match(/^<h[1-4]>/)) {
       if (inList) {
         processedLines.push('</ul>');
@@ -107,7 +107,7 @@ function markdownToHtml(markdown: string): string {
       processedLines.push(trimmedLine);
       continue;
     }
-    
+
     if (inList) {
       processedLines.push('</ul>');
       inList = false;
@@ -116,21 +116,21 @@ function markdownToHtml(markdown: string): string {
       processedLines.push('</ol>');
       inOrderedList = false;
     }
-    
+
     if (trimmedLine.startsWith('<pre>')) {
       processedLines.push(trimmedLine);
     } else {
       processedLines.push('<p>' + trimmedLine + '</p>');
     }
   }
-  
+
   if (inList) {
     processedLines.push('</ul>');
   }
   if (inOrderedList) {
     processedLines.push('</ol>');
   }
-  
+
   return processedLines.join('');
 }
 
