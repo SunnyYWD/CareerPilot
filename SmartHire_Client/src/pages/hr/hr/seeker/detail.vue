@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <view class="seeker-detail">
     <view v-if="loading" class="state-card">
       <text class="state-text">加载中...</text>
@@ -14,7 +14,7 @@
           </view>
           <view class="header-info">
             <view class="name-row">
-              <text class="candidate-name">{{ seeker.username || '求职者' }}</text>
+              <text class="candidate-name">{{ displayName }}</text>
               <view class="status-badge">
                 <text class="badge-text">{{ jobStatusText(seeker.jobStatus) }}</text>
               </view>
@@ -35,9 +35,9 @@
           <view class="chip">{{ seeker.major || '专业未知' }}</view>
           <view class="chip">{{ seeker.graduationYear || '毕业时间未知' }}</view>
           <view class="chip">{{ experienceText(seeker.workExperienceYear) }}</view>
-          <view class="chip">{{ seeker.internshipExperience ? '有实习经历' : '无实习经历' }}</view>
-          <view class="chip" v-if="seeker.university">{{ seeker.university }}</view>
-          <view class="chip" v-if="seeker.city">{{ seeker.city }}</view>
+          <view class="chip">{{ seeker.internshipExperience ? '有实习经验' : '无实习经验' }}</view>
+          <view class="chip" v-if="displayUniversity">{{ displayUniversity }}</view>
+          <view class="chip" v-if="displayCity">{{ displayCity }}</view>
         </view>
 
         <view class="info-grid">
@@ -47,15 +47,87 @@
           </view>
           <view class="info-item">
             <text class="k">城市</text>
-            <text class="v">{{ seeker.city || '未知' }}</text>
+            <text class="v">{{ displayCity || '未知' }}</text>
           </view>
           <view class="info-item">
             <text class="k">学校</text>
-            <text class="v">{{ seeker.university || '未知' }}</text>
+            <text class="v">{{ displayUniversity || '未知' }}</text>
           </view>
           <view class="info-item">
             <text class="k">毕业</text>
             <text class="v">{{ seeker.graduationYear || '未知' }}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="resume-card section">
+        <view class="section-header">
+          <text class="section-title">在线简历</text>
+          <text class="link-button" @click="toggleResume">
+            {{ resumeOpen ? '收起' : '查看' }}
+          </text>
+        </view>
+
+        <view v-if="!resumeOpen" class="resume-hint">
+          点击查看求职者详细简历信息
+        </view>
+
+        <view v-else class="resume-detail">
+          <view v-if="resumeLoading" class="state-inline">加载中...</view>
+          <view v-else-if="resumeError" class="state-inline">{{ resumeError }}</view>
+          <view v-else-if="!onlineResume" class="state-inline">暂无在线简历</view>
+          <view v-else>
+            <view class="resume-subsection" v-if="resumeExpectations.length">
+              <text class="sub-title">求职期望</text>
+              <view class="resume-item" v-for="(item, idx) in resumeExpectations" :key="`exp-${idx}`">
+                <text class="item-title">{{ item.jobTitle || '期望岗位' }}</text>
+                <text class="item-meta">
+                  {{ formatMeta([item.city, formatSalary(item), item.jobType]) }}
+                </text>
+              </view>
+            </view>
+
+            <view class="resume-subsection" v-if="resumeWorkExperiences.length">
+              <text class="sub-title">工作经历</text>
+              <view class="resume-item" v-for="(item, idx) in resumeWorkExperiences" :key="`work-${idx}`">
+                <text class="item-title">{{ item.companyName || item.company || '工作经历' }}</text>
+                <text class="item-meta">
+                  {{ formatMeta([item.position, formatPeriod(item.startDate, item.endDate)]) }}
+                </text>
+                <text class="item-desc" v-if="item.description">{{ item.description }}</text>
+              </view>
+            </view>
+
+            <view class="resume-subsection" v-if="resumeProjectExperiences.length">
+              <text class="sub-title">项目经历</text>
+              <view class="resume-item" v-for="(item, idx) in resumeProjectExperiences" :key="`project-${idx}`">
+                <text class="item-title">{{ item.projectName || '项目经历' }}</text>
+                <text class="item-meta">
+                  {{ formatMeta([item.role, formatPeriod(item.startDate, item.endDate)]) }}
+                </text>
+                <text class="item-desc" v-if="item.description">{{ item.description }}</text>
+              </view>
+            </view>
+
+            <view class="resume-subsection" v-if="resumeEducationExperiences.length">
+              <text class="sub-title">教育经历</text>
+              <view class="resume-item" v-for="(item, idx) in resumeEducationExperiences" :key="`edu-${idx}`">
+                <text class="item-title">{{ item.schoolName || item.school || '教育经历' }}</text>
+                <text class="item-meta">
+                  {{ formatMeta([item.major, item.degree, formatPeriod(item.startDate, item.endDate)]) }}
+                </text>
+              </view>
+            </view>
+
+            <view class="resume-subsection" v-if="resumeSkills.length">
+              <text class="sub-title">技能</text>
+              <view class="skill-row" v-for="(item, idx) in resumeSkills" :key="`skill-${idx}`">
+                <text class="skill-name">{{ item.skillName || item.name || '技能' }}</text>
+                <text class="skill-level" v-if="item.level !== undefined || item.proficiency !== undefined">
+                  {{ formatSkillLevel(item.level ?? item.proficiency) }}
+                </text>
+              </view>
+            </view>
           </view>
         </view>
       </view>
@@ -74,17 +146,16 @@
 
         <view class="form-item textarea">
           <text class="label">备注（可选）</text>
-          <textarea v-model="note" placeholder="匹配理由/推荐说明（可不填）" />
+          <textarea v-model="note" placeholder="匹配理由/推荐说明（可不填）"></textarea>
         </view>
+
+        <button class="outline" :disabled="!selectedJob || loading" @click="goAi">
+          AI 智能分析
+        </button>
 
         <button class="primary" :disabled="loading || recommending" @click="doRecommend">
           {{ recommending ? '推荐中...' : '推荐并发起聊天' }}
         </button>
-      </view>
-
-      <view class="resume-card actions">
-        <button class="ghost" :disabled="loading" @click="openChat">发消息</button>
-        <button class="outline" :disabled="loading" @click="goMessages">消息列表</button>
       </view>
     </scroll-view>
   </view>
@@ -96,11 +167,14 @@ import { onLoad } from '@dcloudio/uni-app';
 import {
   getSeekerCard,
   getJobPositionList,
+  checkApplicationExists,
+  getApplicationDetail,
   recommendJob,
   type SeekerCard,
   type JobPosition,
 } from '@/services/api/hr';
 import { getConversations, sendMessage } from '@/services/api/message';
+import { getOnlineResume } from '@/services/api/seeker';
 
 const userId = ref<number>(0);
 const seeker = ref<SeekerCard | null>(null);
@@ -109,13 +183,32 @@ const selectedJobIndex = ref<number | null>(null);
 const note = ref('');
 const loading = ref(false);
 const recommending = ref(false);
+const resumeOpen = ref(false);
+const resumeLoading = ref(false);
+const resumeError = ref('');
+const onlineResume = ref<any>(null);
+const initialCity = ref('');
+const initialUniversity = ref('');
 
-const fallbackInitial = computed(() => (seeker.value?.username?.trim()?.[0] || 'H').toUpperCase());
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const displayName = computed(() => seeker.value?.realName || seeker.value?.username || '求职者');
+const fallbackInitial = computed(() => (displayName.value.trim()?.[0] || 'H').toUpperCase());
+
+const normalizeField = (value?: string) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return '';
+  if (trimmed === '未知' || trimmed === '未填写' || trimmed === '不详') return '';
+  return trimmed;
+};
+
+const displayCity = computed(() => normalizeField(seeker.value?.city) || initialCity.value || '');
+const displayUniversity = computed(() => normalizeField(seeker.value?.university) || initialUniversity.value || '');
 
 const basicMeta = computed(() => {
   const parts: string[] = [];
   if (seeker.value?.age !== undefined && seeker.value?.age !== null) parts.push(`${seeker.value.age}岁`);
-  if (seeker.value?.city) parts.push(seeker.value.city);
+  if (displayCity.value) parts.push(displayCity.value);
   if (seeker.value?.highestEducation) parts.push(seeker.value.highestEducation);
   return parts.length > 0 ? parts.join(' · ') : '信息待完善';
 });
@@ -133,6 +226,115 @@ const selectedJobLabel = computed(() => {
   if (selectedJob.value) return `${selectedJob.value.jobTitle}${selectedJob.value.city ? ` · ${selectedJob.value.city}` : ''}`;
   return jobs.value.length > 0 ? '请选择岗位' : '暂无可推荐岗位';
 });
+
+const resumeExpectations = computed(() => onlineResume.value?.jobSeekerExpectations || []);
+const resumeWorkExperiences = computed(() => onlineResume.value?.workExperiences || []);
+const resumeProjectExperiences = computed(() => onlineResume.value?.projectExperiences || []);
+const resumeEducationExperiences = computed(() => onlineResume.value?.educationExperiences || []);
+const resumeSkills = computed(() => onlineResume.value?.skills || []);
+
+const formatMeta = (items: Array<string | number | null | undefined>) =>
+  items.filter((item) => item !== null && item !== undefined && String(item).trim() !== '').join(' · ');
+
+const formatSalary = (item: any) => {
+  const min = item?.salaryMin;
+  const max = item?.salaryMax;
+  if (min && max) return `${min}-${max}`;
+  if (min) return `>=${min}`;
+  if (max) return `<=${max}`;
+  return '';
+};
+
+const formatDateOnly = (value?: string) => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (trimmed.includes('T')) return trimmed.split('T')[0];
+  if (trimmed.includes(' ')) return trimmed.split(' ')[0];
+  if (trimmed.length >= 10) return trimmed.slice(0, 10);
+  return trimmed;
+};
+
+const formatPeriod = (start?: string, end?: string) => {
+  const startText = formatDateOnly(start) || '未知';
+  const endText = formatDateOnly(end) || '至今';
+  if (!start && !end) return '';
+  return `${startText} - ${endText}`;
+};
+
+const formatSkillLevel = (level?: number) => {
+  const parsed = Number(level);
+  if (!Number.isFinite(parsed)) return '';
+  const map: Record<number, string> = {
+    0: '了解',
+    1: '熟悉',
+    2: '掌握',
+  };
+  return map[parsed] ?? '';
+};
+
+const loadOnlineResume = async () => {
+  if (!userId.value) return;
+  resumeLoading.value = true;
+  resumeError.value = '';
+  try {
+    const resp = await getOnlineResume(userId.value);
+    onlineResume.value = resp?.data ?? resp ?? null;
+    if (!onlineResume.value) {
+      resumeError.value = '暂无在线简历';
+    }
+  } catch (err) {
+    console.error('Failed to load online resume:', err);
+    resumeError.value = '加载失败';
+  } finally {
+    resumeLoading.value = false;
+  }
+};
+
+const toggleResume = () => {
+  resumeOpen.value = !resumeOpen.value;
+  if (resumeOpen.value && !onlineResume.value && !resumeLoading.value) {
+    loadOnlineResume();
+  }
+};
+
+const goAi = async () => {
+  if (!selectedJob.value?.id) {
+    uni.showToast({ title: "请先选择岗位", icon: "none" });
+    return;
+  }
+  uni.showLoading({ title: "AI分析..." });
+  try {
+    const exists = await checkApplicationExists({
+      jobId: selectedJob.value.id,
+      seekerUserId: userId.value,
+    });
+    if (exists?.exists && exists.applicationId) {
+      const detail = await getApplicationDetail(exists.applicationId);
+      if (detail?.jobSeekerId) {
+        uni.navigateTo({
+          url: `/pages/hr/hr/ai/candidate-ai?jobSeekerId=${encodeURIComponent(
+            detail.jobSeekerId
+          )}&jobId=${encodeURIComponent(detail.jobId || selectedJob.value.id)}&candidateName=${encodeURIComponent(
+            seeker.value?.username || ""
+          )}&jobTitle=${encodeURIComponent(selectedJob.value.jobTitle || "")}`,
+        });
+        return;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to open AI:", err);
+  } finally {
+    uni.hideLoading();
+  }
+
+  uni.navigateTo({
+    url: `/pages/hr/hr/ai/candidate-ai?userId=${encodeURIComponent(
+      userId.value
+    )}&jobId=${encodeURIComponent(selectedJob.value.id)}&candidateName=${encodeURIComponent(
+      seeker.value?.username || ""
+    )}&jobTitle=${encodeURIComponent(selectedJob.value.jobTitle || "")}`,
+  });
+};
 
 const onJobChange = (event: any) => {
   const index = Number(event.detail.value);
@@ -165,6 +367,16 @@ const loadData = async () => {
       getJobPositionList(1),
     ]);
     seeker.value = card || null;
+    if (seeker.value) {
+      const city = normalizeField(seeker.value.city);
+      const university = normalizeField(seeker.value.university);
+      if (!city && initialCity.value) {
+        seeker.value.city = initialCity.value;
+      }
+      if (!university && initialUniversity.value) {
+        seeker.value.university = initialUniversity.value;
+      }
+    }
     jobs.value = Array.isArray(jobList) ? jobList : [];
   } catch (err) {
     console.error('Failed to load seeker detail:', err);
@@ -179,9 +391,19 @@ const getExistingConversation = async () => {
   return conversations.find((c) => c.otherUserId === userId.value) || null;
 };
 
+const getConversationByApplicationId = async (applicationId?: number) => {
+  if (!applicationId) return null;
+  const conversations = await getConversations();
+  return conversations.find((c) => c.otherUserId === userId.value && c.applicationId === applicationId) || null;
+};
+
 const goToChat = (conversationId: number, applicationId?: number) => {
   const username = seeker.value?.username || '';
   const appQuery = applicationId ? `&applicationId=${applicationId}` : '';
+  if (applicationId) {
+    uni.setStorageSync(`hr_chat_app_by_conv_${conversationId}`, applicationId);
+    uni.setStorageSync(`hr_chat_app_by_user_${userId.value}`, applicationId);
+  }
   uni.navigateTo({
     url: `/pages/hr/hr/messages/chat?id=${conversationId}&userId=${userId.value}&username=${encodeURIComponent(username)}${appQuery}`,
   });
@@ -200,53 +422,91 @@ const doRecommend = async () => {
 
   recommending.value = true;
   try {
+    const exists = await checkApplicationExists({
+      jobId: selectedJob.value.id,
+      seekerUserId: userId.value,
+    });
+    if (exists.exists) {
+      uni.showModal({
+        title: '已存在投递/推荐记录',
+        content: '该求职者已对该岗位投递或已被推荐过，是否直接进入聊天？',
+        success: async (res) => {
+          if (!res.confirm) return;
+          try {
+            const conv =
+              (await getConversationByApplicationId(exists.applicationId)) || (await getExistingConversation());
+            if (!conv) {
+              uni.showToast({ title: '未找到会话记录', icon: 'none' });
+              return;
+            }
+            goToChat(conv.id, conv.applicationId);
+          } catch (err) {
+            console.error('Failed to open existing chat:', err);
+            uni.showToast({ title: '进入聊天失败', icon: 'none' });
+          }
+        },
+      });
+      return;
+    }
+
     const applicationId = await recommendJob({
       jobId: selectedJob.value.id,
       seekerUserId: userId.value,
       note: note.value.trim() || undefined,
     });
 
+    if (!Number.isFinite(applicationId) || applicationId <= 0) {
+      throw new Error(`Invalid applicationId: ${String(applicationId)}`);
+    }
+
     const intro =
       `你好，我向你推荐岗位：${selectedJob.value.jobTitle}` +
       (selectedJob.value.city ? `（${selectedJob.value.city}）` : '') +
-      (note.value.trim() ? `。备注：${note.value.trim()}` : '。');
+      (note.value.trim() ? `。备注：${note.value.trim()}` : '');
 
-    const sent = await sendMessage({
-      receiverId: userId.value,
-      applicationId,
-      messageType: 1,
-      content: intro,
-      fileUrl: null,
-      replyTo: null,
-    });
+    let sentConversationId: number | null = null;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const sent = await sendMessage({
+          receiverId: userId.value,
+          applicationId,
+          messageType: 1,
+          content: intro,
+          fileUrl: null,
+          replyTo: null,
+        });
+        sentConversationId = sent.conversationId;
+        break;
+      } catch (err) {
+        lastError = err;
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes('投递记录不存在') && attempt < 3) {
+          await sleep(400 * attempt);
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!sentConversationId) {
+      const existing = await getExistingConversation();
+      if (existing?.id) {
+        sentConversationId = existing.id;
+      } else {
+        throw lastError instanceof Error ? lastError : new Error('Send failed');
+      }
+    }
 
     uni.showToast({ title: '推荐成功', icon: 'success' });
-    goToChat(sent.conversationId, applicationId);
+    goToChat(sentConversationId, applicationId);
   } catch (err) {
     console.error('Failed to recommend job:', err);
     uni.showToast({ title: '推荐失败', icon: 'none' });
   } finally {
     recommending.value = false;
   }
-};
-
-const openChat = async () => {
-  if (!userId.value) return;
-  try {
-    const existing = await getExistingConversation();
-    if (!existing) {
-      uni.showToast({ title: '请先推荐岗位后再发起会话', icon: 'none' });
-      return;
-    }
-    goToChat(existing.id, existing.applicationId);
-  } catch (err) {
-    console.error('Failed to open chat:', err);
-    uni.showToast({ title: '进入聊天失败', icon: 'none' });
-  }
-};
-
-const goMessages = () => {
-  uni.switchTab({ url: '/pages/hr/hr/messages/index' });
 };
 
 onLoad((options) => {
@@ -257,6 +517,20 @@ onLoad((options) => {
     return;
   }
   userId.value = parsed;
+  if (options?.city) {
+    try {
+      initialCity.value = decodeURIComponent(options.city as string);
+    } catch {
+      initialCity.value = options.city as string;
+    }
+  }
+  if (options?.university) {
+    try {
+      initialUniversity.value = decodeURIComponent(options.university as string);
+    } catch {
+      initialUniversity.value = options.university as string;
+    }
+  }
   loadData();
 });
 </script>
@@ -381,6 +655,90 @@ onLoad((options) => {
   color: vars.$text-color;
 }
 
+.link-button {
+  font-size: 24rpx;
+  color: vars.$primary-color;
+  padding: 6rpx 10rpx;
+  border-radius: 999rpx;
+  background: rgba(75, 163, 255, 0.12);
+}
+
+.resume-hint {
+  font-size: 24rpx;
+  color: vars.$text-muted;
+  padding: 6rpx 0 2rpx;
+}
+
+.resume-detail {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$spacing-md;
+}
+
+.state-inline {
+  font-size: 24rpx;
+  color: vars.$text-muted;
+  padding: 8rpx 0;
+}
+
+.resume-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: vars.$spacing-sm;
+}
+
+.sub-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: vars.$text-color;
+}
+
+.resume-item {
+  background: #f8faff;
+  border-radius: vars.$border-radius-sm;
+  padding: 16rpx 18rpx;
+}
+
+.item-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: vars.$text-color;
+}
+
+.item-meta {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: vars.$text-muted;
+}
+
+.item-desc {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: vars.$text-color;
+  line-height: 1.5;
+}
+
+.skill-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12rpx 16rpx;
+  border-radius: vars.$border-radius-sm;
+  background: #f8faff;
+}
+
+.skill-name {
+  font-size: 24rpx;
+  color: vars.$text-color;
+}
+
+.skill-level {
+  font-size: 22rpx;
+  color: vars.$text-muted;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -465,28 +823,16 @@ button.primary {
   box-shadow: 0 12rpx 26rpx rgba(47, 124, 255, 0.24);
 }
 
-.actions {
-  display: flex;
-  gap: vars.$spacing-sm;
-}
-
-.actions button {
-  flex: 1;
-  height: 84rpx;
-  border-radius: vars.$border-radius-sm;
-  font-size: 30rpx;
-  font-weight: 600;
-}
-
-button.ghost {
-  background: #f3f6ff;
-  color: #2f7cff;
-  border: 2rpx solid rgba(47, 124, 255, 0.18);
-}
-
 button.outline {
-  background: #fff;
-  color: vars.$text-color;
-  border: 2rpx solid rgba(18, 32, 56, 0.12);
+  width: 100%;
+  height: 88rpx;
+  border-radius: vars.$border-radius-sm;
+  border: 2rpx solid vars.$primary-color;
+  color: vars.$primary-color;
+  background: transparent;
+  font-size: 30rpx;
+  font-weight: 800;
+  margin-bottom: 14rpx;
 }
+
 </style>
