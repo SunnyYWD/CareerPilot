@@ -1,11 +1,11 @@
 <template>
   <view class="radar-box" :style="{ width: size + 'rpx', height: size + 'rpx' }">
     <!-- Chart Background (Grid & Data) -->
-    <view 
+    <view
       class="radar-chart"
       :style="{ backgroundImage: `url('${chartSvgUrl}')` }"
     ></view>
-    
+
     <!-- Labels Layer (HTML Elements for better text control) -->
     <view class="labels-layer">
       <view
@@ -42,7 +42,7 @@ const chartSvgUrl = computed(() => {
   const cy = size / 2;
   const radius = 35;
   const count = props.labels.length || 3;
-  
+
   // Helper to calculate points
   const getPoint = (idx: number, r: number) => {
     const angle = (idx * 2 * Math.PI) / count - Math.PI / 2;
@@ -78,15 +78,15 @@ const chartSvgUrl = computed(() => {
   if (props.data && props.data.length) {
     for (let i = 0; i < count; i++) {
       let val = props.data[i] || 0;
-      
+
       const rawRatio = Math.min(Math.max(val / props.max, 0), 1);
       const minRatio = 0.2;
       const ratio = minRatio + rawRatio * (1 - minRatio);
-      
+
       const r = radius * ratio;
       const p = getPoint(i, r);
       dataPath += `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)} `;
-      
+
       dataPoints += `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="1.5" fill="${props.color}" stroke="#fff" stroke-width="0.5" />`;
     }
     dataPath += 'Z';
@@ -111,11 +111,11 @@ const chartSvgUrl = computed(() => {
 function getLabelPos(index: number) {
   const count = props.labels.length || 3;
   const angle = (index * 2 * Math.PI) / count - Math.PI / 2;
-  const r = 45; 
-  
+  const r = 45;
+
   const x = 50 + Math.cos(angle) * r;
   const y = 50 + Math.sin(angle) * r;
-  
+
   return {
     left: x + '%',
     top: y + '%',
@@ -149,7 +149,7 @@ function getLabelPos(index: number) {
 
 .label-item {
   position: absolute;
-  white-space: nowrap; 
+  white-space: nowrap;
   width: auto;
   display: flex;
   align-items: center;
