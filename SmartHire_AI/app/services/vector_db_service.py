@@ -194,26 +194,15 @@ def delete_match_scores_for_seeker(seeker_id: int) -> bool:
     
     try:
         ensure_collection()
-        
-        results = milvus_client.query(
+
+        # Delete in a single filtered call instead of querying every id and
+        # issuing one delete per row.
+        milvus_client.delete(
             collection_name=MATCH_SCORES_COLLECTION,
             filter=f'seeker_id == "{seeker_id}"',
-            output_fields=["id"],
-            limit=10000
         )
-        
-        if results:
-            ids_to_delete = [r["id"] for r in results]
-            for id_val in ids_to_delete:
-                try:
-                    milvus_client.delete(
-                        collection_name=MATCH_SCORES_COLLECTION,
-                        filter=f'id == {id_val}'
-                    )
-                except:
-                    pass
-            logger.info(f"Deleted {len(ids_to_delete)} match scores for seeker {seeker_id}")
-        
+        logger.info(f"Deleted match scores for seeker {seeker_id}")
+
         return True
     except Exception as e:
         logger.error(f"Failed to delete match scores for seeker: {e}")
@@ -226,26 +215,15 @@ def delete_match_scores_for_job(job_id: int) -> bool:
     
     try:
         ensure_collection()
-        
-        results = milvus_client.query(
+
+        # Delete in a single filtered call instead of querying every id and
+        # issuing one delete per row.
+        milvus_client.delete(
             collection_name=MATCH_SCORES_COLLECTION,
             filter=f'job_id == "{job_id}"',
-            output_fields=["id"],
-            limit=10000
         )
-        
-        if results:
-            ids_to_delete = [r["id"] for r in results]
-            for id_val in ids_to_delete:
-                try:
-                    milvus_client.delete(
-                        collection_name=MATCH_SCORES_COLLECTION,
-                        filter=f'id == {id_val}'
-                    )
-                except:
-                    pass
-            logger.info(f"Deleted {len(ids_to_delete)} match scores for job {job_id}")
-        
+        logger.info(f"Deleted match scores for job {job_id}")
+
         return True
     except Exception as e:
         logger.error(f"Failed to delete match scores for job: {e}")
