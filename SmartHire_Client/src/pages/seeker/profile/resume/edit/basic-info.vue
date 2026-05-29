@@ -77,8 +77,7 @@ import { computed, ref } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
 import { t } from '@/locales';
 import { useNavigationTitle } from '@/utils/useNavigationTitle';
-import type { SeekerInfo } from '@/services/api/seeker';
-import { getSeekerInfo, updateSeekerInfo } from '@/services/api/seeker';
+import { getSeekerInfo, updateSeekerInfo, type SeekerInfo } from '@/services/api/seeker';
 import CityPicker from '@/components/common/CityPicker.vue';
 
 useNavigationTitle('navigation.editBasicInfo');
