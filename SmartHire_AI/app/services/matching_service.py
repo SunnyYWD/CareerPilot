@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from app.services.db_service import (
@@ -25,6 +26,43 @@ from app.services.vector_db_service import (
 from app.db.models import JobInfo, JobSeeker
 
 logger = logging.getLogger(__name__)
+
+try:
+    from rapidfuzz.fuzz import token_set_ratio
+    _HAS_RAPIDFUZZ = True
+except ImportError:  # graceful fallback if rapidfuzz is not installed
+    token_set_ratio = None
+    _HAS_RAPIDFUZZ = False
+
+# Fuzzy skill-name match threshold (token_set_ratio, 0-100).
+FUZZY_MATCH_THRESHOLD = 85
+
+# Single source of truth for education-level mapping (was duplicated inline below).
+EDUCATION_LEVELS = {0: "高中及以下", 1: "专科", 2: "本科", 3: "硕士", 4: "博士"}
+EDUCATION_NAME_TO_LEVEL = {name: level for level, name in EDUCATION_LEVELS.items()}
+
+
+def normalize_skill(skill: str) -> str:
+    """Lowercase and strip whitespace/separators so casing and punctuation
+    variants (e.g. "Postgres" vs "PostgreSQL", "Node.js" vs "nodejs") compare
+    cleanly before any fuzzy fallback. Keeps '+'/'#' so C++/C# stay distinct."""
+    if not skill:
+        return ""
+    return re.sub(r"[\s._/\\-]+", "", skill.lower())
+
+
+def skills_match(a: str, b: str) -> bool:
+    """True if two skill names refer to the same skill: exact match after
+    normalization, then a rapidfuzz token-set fallback (substring fallback when
+    rapidfuzz is unavailable)."""
+    na, nb = normalize_skill(a), normalize_skill(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    if _HAS_RAPIDFUZZ:
+        return token_set_ratio(na, nb) >= FUZZY_MATCH_THRESHOLD
+    return na in nb or nb in na
 
 
 def calculate_single_match_score(db: Session, user_id: int, job_id: int) -> int:
@@ -135,8 +173,7 @@ def calculate_batch_match_scores(
     if seeker_education:
         seeker_edu_level = seeker_education.get("education")
         if seeker_edu_level is not None:
-            education_map = {0: "高中及以下", 1: "专科", 2: "本科", 3: "硕士", 4: "博士"}
-            seeker_edu_str = education_map.get(seeker_edu_level, "")
+            seeker_edu_str = EDUCATION_LEVELS.get(seeker_edu_level, "")
     
     results = []
     for job in jobs:
@@ -229,14 +266,13 @@ def _calculate_batch_without_cache(
                     
                     skill_match = calculate_skill_match(seeker_skills, job_skills)
                     
-                    description_match = calculate_description_match(seeker_text, job_info["description"])
+                    description_match = calculate_description_match(seeker_text, job_info["description"], seeker_embedding)
                     
                     seeker_edu_str = None
                     if seeker_education:
                         seeker_edu_level = seeker_education.get("education")
                         if seeker_edu_level is not None:
-                            education_map = {0: "高中及以下", 1: "专科", 2: "本科", 3: "硕士", 4: "博士"}
-                            seeker_edu_str = education_map.get(seeker_edu_level, "")
+                            seeker_edu_str = EDUCATION_LEVELS.get(seeker_edu_level, "")
                     
                     education_match = calculate_education_match(
                         seeker_edu_str,
@@ -324,7 +360,8 @@ def _calculate_batch_without_cache(
         
         description_match = calculate_description_match(
             seeker_text,
-            description
+            description,
+            seeker_embedding,
         )
         
         education_match = calculate_education_match(
@@ -372,25 +409,30 @@ def calculate_skill_match(seeker_skills: List[Dict], job_skills: List[str]) -> f
     if not seeker_skills:
         return 0.0
     
-    seeker_skill_names = [s.get("name", "").lower() for s in seeker_skills if s.get("name")]
-    job_skill_names = [s.lower() for s in job_skills if s]
-    
+    seeker_skill_names = [s.get("name", "") for s in seeker_skills if s.get("name")]
+    job_skill_names = [s for s in job_skills if s]
+
     matched_count = 0
     for job_skill in job_skill_names:
-        if any(job_skill in seeker_skill or seeker_skill in job_skill 
+        if any(skills_match(job_skill, seeker_skill)
                for seeker_skill in seeker_skill_names):
             matched_count += 1
-    
+
     return matched_count / len(job_skill_names) if job_skill_names else 0.0
 
 
-def calculate_description_match(seeker_text: str, job_description: str) -> float:
+def calculate_description_match(
+    seeker_text: str, job_description: str, seeker_embedding: List[float] = None
+) -> float:
     if not job_description:
         return 1.0
-    
-    seeker_embedding = embed_text(seeker_text)
+
+    # Reuse the caller's already-computed seeker embedding when available to
+    # avoid re-embedding the same seeker text on every job in a batch.
+    if seeker_embedding is None:
+        seeker_embedding = embed_text(seeker_text)
     job_desc_embedding = embed_text(job_description)
-    
+
     return calculate_cosine_similarity(seeker_embedding, job_desc_embedding)
 
 
@@ -401,20 +443,12 @@ def calculate_education_match(seeker_education: str, job_education_required: Any
     if seeker_education is None:
         return 0.0
     
-    education_map = {
-        "高中及以下": 0,
-        "专科": 1,
-        "本科": 2,
-        "硕士": 3,
-        "博士": 4,
-    }
-    
-    seeker_level = education_map.get(seeker_education, -1)
-    
+    seeker_level = EDUCATION_NAME_TO_LEVEL.get(seeker_education, -1)
+
     if isinstance(job_education_required, int):
         job_level = job_education_required
     elif isinstance(job_education_required, str):
-        job_level = education_map.get(job_education_required, -1)
+        job_level = EDUCATION_NAME_TO_LEVEL.get(job_education_required, -1)
     else:
         return 0.0
     

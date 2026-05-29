@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 from app.services.db_service import calculate_work_years
-from app.services.matching_service import calculate_education_match
+from app.services.matching_service import calculate_education_match, skills_match
 from app.core.config import config
 
 logger = logging.getLogger(__name__)
@@ -34,26 +34,35 @@ def analyze_skill_gap(
 ) -> Dict[str, Any]:
     logger.debug(f"[GapAnalysis] Analyzing skill gap: seekerSkills={len(seeker_skills)}, jobSkills={len(job_skills)}")
     
-    seeker_skill_names = {s.get("name", "").lower(): s.get("level") for s in seeker_skills if s.get("name")}
-    
+    seeker_skill_list = [(s.get("name", ""), s.get("level")) for s in seeker_skills if s.get("name")]
+
     required_missing = []
     optional_missing = []
     matched = []
     required_total = 0
     required_matched = 0
-    
+
     for job_skill in job_skills:
         skill_name = job_skill.get("name", "")
         is_required = job_skill.get("is_required", False)
-        skill_name_lower = skill_name.lower()
-        
+
         if is_required:
             required_total += 1
-        
-        if skill_name_lower in seeker_skill_names:
+
+        # Normalized + fuzzy match (shared with matching_service) so alias/casing
+        # variants are not falsely reported as gaps.
+        matched_level = None
+        is_matched = False
+        for seeker_name, seeker_level in seeker_skill_list:
+            if skills_match(skill_name, seeker_name):
+                is_matched = True
+                matched_level = seeker_level
+                break
+
+        if is_matched:
             matched.append({
                 "name": skill_name,
-                "your_level": seeker_skill_names[skill_name_lower],
+                "your_level": matched_level,
                 "is_required": is_required
             })
             if is_required:
