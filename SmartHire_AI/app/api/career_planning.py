@@ -34,6 +34,26 @@ logger = logging.getLogger(__name__)
 
 _cache: Dict[str, tuple] = {}
 _analysis_cache: Dict[str, tuple] = {}
+# Caches the fully-generated text of the SSE streaming endpoints (learning plan,
+# interview prep) so repeat views replay the cached content instead of re-running
+# the full LLM generation. Keyed by "{kind}:{user_id}:{job_id}".
+_stream_cache: Dict[str, tuple] = {}
+
+
+def get_cached_stream(kind: str, user_id: int, job_id: int) -> Optional[str]:
+    key = f"{kind}:{user_id}:{job_id}"
+    if key in _stream_cache:
+        cached_text, timestamp = _stream_cache[key]
+        if datetime.now() - timestamp < timedelta(hours=24):
+            return cached_text
+        else:
+            del _stream_cache[key]
+    return None
+
+
+def set_cached_stream(kind: str, user_id: int, job_id: int, text: str):
+    key = f"{kind}:{user_id}:{job_id}"
+    _stream_cache[key] = (text, datetime.now())
 
 
 def get_cached_plan(user_id: int, job_id: int) -> Optional[Dict[str, Any]]:
@@ -287,27 +307,36 @@ def get_career_analysis(
 @router.get("/ai/career-planning/{job_id}/learning-plan")
 async def stream_learning_plan(
     job_id: int,
+    force_refresh: bool = Query(False, description="Force refresh cache"),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    logger.info(f"[CareerPlanning] Learning plan stream request: userId={user_id}, jobId={job_id}")
-    
+    logger.info(f"[CareerPlanning] Learning plan stream request: userId={user_id}, jobId={job_id}, forceRefresh={force_refresh}")
+
     try:
         analysis_data = _prepare_analysis_data(db, user_id, job_id)
-        
+
         skill_gap = analysis_data["skill_gap"]
         required_missing = skill_gap.get("required_missing", [])
         optional_missing = skill_gap.get("optional_missing", [])
         matched = skill_gap.get("matched", [])
         job_info = analysis_data["job_info"]
-        
+
         llm_service = LLMService()
-        
+
         async def generate_stream() -> AsyncGenerator[str, None]:
             try:
                 start_message = config.messages.stream.get("learning_plan_start", "Starting to generate learning plan...")
                 yield f"data: {json.dumps({'type': 'start', 'message': start_message}, ensure_ascii=False)}\n\n"
-                
+
+                cached_text = None if force_refresh else get_cached_stream("learning_plan", user_id, job_id)
+                if cached_text is not None:
+                    logger.info(f"[CareerPlanning] Learning plan stream cache hit: userId={user_id}, jobId={job_id}")
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': cached_text}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'cached': True}, ensure_ascii=False)}\n\n"
+                    return
+
+                accumulated = []
                 async for chunk in llm_service.generate_learning_plan_stream(
                     required_missing_skills=required_missing,
                     optional_missing_skills=optional_missing,
@@ -316,9 +345,16 @@ async def stream_learning_plan(
                     job_requirements=job_info.get("requirements", "")
                 ):
                     if chunk:
+                        accumulated.append(chunk)
                         yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
-                
-                done_message = config.messages.stream.get("done", "Generation completed")
+
+                # Cache only a successful, non-empty generation (skip error sentinels).
+                full_text = "".join(accumulated)
+                error_prefix = config.messages.stream.get("error_prefix", "Error: ")
+                had_error = ("[error" in full_text.lower()) or (error_prefix and error_prefix in full_text)
+                if full_text and not had_error:
+                    set_cached_stream("learning_plan", user_id, job_id, full_text)
+
                 yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
             except Exception as e:
                 logger.error(f"[CareerPlanning] Stream error: {e}", exc_info=True)
@@ -348,27 +384,36 @@ async def stream_learning_plan(
 @router.get("/ai/career-planning/{job_id}/interview-prep")
 async def stream_interview_prep(
     job_id: int,
+    force_refresh: bool = Query(False, description="Force refresh cache"),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    logger.info(f"[CareerPlanning] Interview prep stream request: userId={user_id}, jobId={job_id}")
-    
+    logger.info(f"[CareerPlanning] Interview prep stream request: userId={user_id}, jobId={job_id}, forceRefresh={force_refresh}")
+
     try:
         analysis_data = _prepare_analysis_data(db, user_id, job_id)
-        
+
         skill_gap = analysis_data["skill_gap"]
         all_missing = skill_gap.get("required_missing", []) + skill_gap.get("optional_missing", [])
         job_info = analysis_data["job_info"]
         seeker_project_experiences = analysis_data["seeker_project_experiences"]
         seeker_work_experiences = analysis_data["seeker_work_experiences"]
-        
+
         llm_service = LLMService()
-        
+
         async def generate_stream() -> AsyncGenerator[str, None]:
             try:
                 start_message = config.messages.stream.get("interview_prep_start", "Starting to generate interview preparation advice...")
                 yield f"data: {json.dumps({'type': 'start', 'message': start_message}, ensure_ascii=False)}\n\n"
-                
+
+                cached_text = None if force_refresh else get_cached_stream("interview_prep", user_id, job_id)
+                if cached_text is not None:
+                    logger.info(f"[CareerPlanning] Interview prep stream cache hit: userId={user_id}, jobId={job_id}")
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': cached_text}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'cached': True}, ensure_ascii=False)}\n\n"
+                    return
+
+                accumulated = []
                 async for chunk in llm_service.generate_interview_prep_stream(
                     job_title=job_info.get("job_title", ""),
                     job_requirements=job_info.get("requirements", ""),
@@ -377,9 +422,16 @@ async def stream_interview_prep(
                     missing_skills=all_missing
                 ):
                     if chunk:
+                        accumulated.append(chunk)
                         yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
-                
-                done_message = config.messages.stream.get("done", "Generation completed")
+
+                # Cache only a successful, non-empty generation (skip error sentinels).
+                full_text = "".join(accumulated)
+                error_prefix = config.messages.stream.get("error_prefix", "Error: ")
+                had_error = ("[error" in full_text.lower()) or (error_prefix and error_prefix in full_text)
+                if full_text and not had_error:
+                    set_cached_stream("interview_prep", user_id, job_id, full_text)
+
                 yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
             except Exception as e:
                 logger.error(f"[CareerPlanning] Stream error: {e}", exc_info=True)
@@ -593,11 +645,11 @@ def get_career_planning(
         logger.info(f"[CareerPlanning] ========== RESPONSE SUMMARY ==========")
         logger.info(f"[CareerPlanning] Request completed: userId={user_id}, jobId={job_id}, duration={total_duration:.2f}s, responseSize={response_size} bytes")
         logger.info(f"[CareerPlanning] Response structure: hasMatchAnalysis=True, hasGapAnalysis=True, hasLearningPlan={learning_plan is not None}, hasInterviewPrep={interview_prep is not None}, hasError={llm_error is not None}")
-        logger.info(f"[CareerPlanning] ✅ MATCH ANALYSIS VALUES: overallScore={match_analysis.get('overall_score')}, skillMatch={match_analysis.get('skill_match')}, educationMatch={match_analysis.get('education_match')}, experienceQualified={match_analysis.get('experience_qualified')}")
-        logger.info(f"[CareerPlanning] ✅ GAP ANALYSIS VALUES: skillMatchRate={gap_analysis['skills'].get('match_rate')}, requiredMissing={len(gap_analysis['skills'].get('required_missing', []))}, optionalMissing={len(gap_analysis['skills'].get('optional_missing', []))}, matched={len(gap_analysis['skills'].get('matched', []))}")
-        logger.info(f"[CareerPlanning] ✅ EXPERIENCE GAP: yourYears={gap_analysis['experience'].get('your_years')}, requiredLevel={gap_analysis['experience'].get('required_level')}, isQualified={gap_analysis['experience'].get('is_qualified')}, gapYears={gap_analysis['experience'].get('gap_years')}")
-        logger.info(f"[CareerPlanning] ✅ EDUCATION GAP: yourText={gap_analysis['education'].get('your_text')}, requiredText={gap_analysis['education'].get('required_text')}, isQualified={gap_analysis['education'].get('is_qualified')}, matchScore={gap_analysis['education'].get('match_score')}")
-        logger.info(f"[CareerPlanning] ✅ LLM DATA: learningPlanSkills={len(learning_plan.get('skills', [])) if learning_plan else 0}, learningPlanRawLength={len(learning_plan.get('raw_text', '')) if learning_plan else 0}, interviewPrepRawLength={len(interview_prep.get('raw_text', '')) if interview_prep else 0}, llmError={llm_error}")
+        logger.info(f"[CareerPlanning] MATCH ANALYSIS VALUES: overallScore={match_analysis.get('overall_score')}, skillMatch={match_analysis.get('skill_match')}, educationMatch={match_analysis.get('education_match')}, experienceQualified={match_analysis.get('experience_qualified')}")
+        logger.info(f"[CareerPlanning] GAP ANALYSIS VALUES: skillMatchRate={gap_analysis['skills'].get('match_rate')}, requiredMissing={len(gap_analysis['skills'].get('required_missing', []))}, optionalMissing={len(gap_analysis['skills'].get('optional_missing', []))}, matched={len(gap_analysis['skills'].get('matched', []))}")
+        logger.info(f"[CareerPlanning] EXPERIENCE GAP: yourYears={gap_analysis['experience'].get('your_years')}, requiredLevel={gap_analysis['experience'].get('required_level')}, isQualified={gap_analysis['experience'].get('is_qualified')}, gapYears={gap_analysis['experience'].get('gap_years')}")
+        logger.info(f"[CareerPlanning] EDUCATION GAP: yourText={gap_analysis['education'].get('your_text')}, requiredText={gap_analysis['education'].get('required_text')}, isQualified={gap_analysis['education'].get('is_qualified')}, matchScore={gap_analysis['education'].get('match_score')}")
+        logger.info(f"[CareerPlanning] LLM DATA: learningPlanSkills={len(learning_plan.get('skills', [])) if learning_plan else 0}, learningPlanRawLength={len(learning_plan.get('raw_text', '')) if learning_plan else 0}, interviewPrepRawLength={len(interview_prep.get('raw_text', '')) if interview_prep else 0}, llmError={llm_error}")
         logger.info(f"[CareerPlanning] ========== RETURNING RESPONSE ==========")
         logger.debug(f"[CareerPlanning] Full response JSON (first 1000 chars): {response_json[:1000]}")
         
