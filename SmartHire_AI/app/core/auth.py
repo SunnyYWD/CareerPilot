@@ -15,25 +15,18 @@ def extract_token(credentials: HTTPAuthorizationCredentials) -> str:
 
 def verify_token(token: str) -> dict:
     try:
-        logger.info(f"Verifying token (first 50 chars): {token[:50]}...")
-        logger.info(f"Token length: {len(token)}")
-        logger.info(f"Using secret key: {config.jwt.secret_key}, algorithm: {config.jwt.algorithm}")
-        
-        # Try decoding without verification first to see the payload
-        try:
-            unverified = jwt.decode(token, options={"verify_signature": False})
-            logger.info(f"Unverified payload: {unverified}")
-        except Exception as e:
-            logger.error(f"Cannot decode payload: {e}")
-        
+        # Do not log the token, secret key, or decoded payload — they are
+        # sensitive. Length only, at debug level, for troubleshooting.
+        logger.debug(f"Verifying token: length={len(token)}, algorithm={config.jwt.algorithm}")
+
         payload = jwt.decode(
             token,
             config.jwt.secret_key,
             algorithms=[config.jwt.algorithm],
         )
-        
-        logger.info(f"Token decoded successfully: {payload}")
-        
+
+        logger.debug("Token decoded successfully")
+
         if payload.get("type") != "access":
             logger.error(f"Invalid token type: {payload.get('type')}")
             raise HTTPException(
@@ -43,13 +36,13 @@ def verify_token(token: str) -> dict:
         
         claims = payload.get("claims")
         if not claims:
-            logger.error(f"No claims in token payload: {payload}")
+            logger.error("No claims in token payload")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token claims",
             )
-        
-        logger.info(f"Token verification successful, claims: {claims}")
+
+        logger.debug("Token verification successful")
         return claims
     except jwt.ExpiredSignatureError:
         logger.error("Token expired")
