@@ -215,6 +215,13 @@
             <version>2.8.0</version>
         </dependency>
 
+        <!-- Required by SpringDoc's Kotlin customizers when generating OpenAPI schemas -->
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-reflect</artifactId>
+            <version>1.9.25</version>
+        </dependency>
+
         <!-- RabbitMQ 支持 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
