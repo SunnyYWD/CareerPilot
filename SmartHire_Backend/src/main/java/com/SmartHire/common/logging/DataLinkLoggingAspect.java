@@ -51,8 +51,7 @@ public class DataLinkLoggingAspect {
   @Pointcut(
       "execution(* com.SmartHire..controller..*(..))"
           + " || execution(* com.SmartHire..service..*(..))"
-          + " || execution(* com.SmartHire..mapper..*(..))"
-          + " || execution(* com.SmartHire..websocket..*(..))")
+          + " || execution(* com.SmartHire..mapper..*(..))")
   public void dataLinkBoundary() {}
 
   @Around("dataLinkBoundary()")
