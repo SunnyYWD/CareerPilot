@@ -36,6 +36,20 @@ services:
     volumes:
       - smarthire_rabbitmq_data:/var/lib/rabbitmq
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: smarthire-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - smarthire_redis_data:/data
+
   backend:
     build:
       context: ./SmartHire_Backend
@@ -46,6 +60,8 @@ services:
       mysql:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     env_file:
       - ./.env
@@ -60,6 +76,10 @@ services:
       SPRING_RABBITMQ_PORT: 5672
       SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-smarthire}
       SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-smarthire}
+
+      # Redis (use the compose service name "redis" as hostname)
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
 
       # JWT
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
@@ -78,3 +98,4 @@ services:
 volumes:
   smarthire_mysql_data:
   smarthire_rabbitmq_data:
+  smarthire_redis_data:
