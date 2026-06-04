@@ -18,6 +18,24 @@ services:
     volumes:
       - smarthire_mysql_data:/var/lib/mysql
 
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: smarthire-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-smarthire}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-smarthire}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - smarthire_rabbitmq_data:/var/lib/rabbitmq
+
   backend:
     build:
       context: ./SmartHire_Backend
@@ -27,6 +45,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     env_file:
       - ./.env
     environment:
@@ -34,6 +54,12 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+
+      # RabbitMQ (use the compose service name "rabbitmq" as hostname)
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-smarthire}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-smarthire}
 
       # JWT
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
@@ -51,3 +77,4 @@ services:
 
 volumes:
   smarthire_mysql_data:
+  smarthire_rabbitmq_data:
